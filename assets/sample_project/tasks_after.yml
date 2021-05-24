@@ -1,0 +1,41 @@
+---
+
+# systemctl
+
+- name: ensure systemd system services directory present
+  file:
+    path: "/usr/lib/systemd/system/"
+    state: directory
+  become: yes
+
+- name: puma service is installed
+  template:
+    src: "{{ app_assets }}/systemd_puma.j2"
+    dest: "/usr/lib/systemd/system/{{ app_name }}-puma.service"
+  register: puma_service
+
+- name: systemd is reloaded
+  command: systemctl daemon-reload
+  when: puma_service.changed
+
+- name: puma is restarted and enabled
+  service: name="{{ app_name }}-puma" state=restarted enabled=yes
+
+- name: Let's Encrypt cert is created
+  command: "certbot certonly -q --agree-tos --email {{ email }} --webroot -w {{ app_path }}/current/public -d {{ app_hostname }}"
+  args:
+    creates: "/etc/letsencrypt/live/{{ app_hostname }}/fullchain.pem"
+  when: use_ssl is defined and use_ssl == true
+
+# nginx
+
+- name: nginx site is installed
+  template:
+    src: "{{ app_assets }}/nginx_site.j2"
+    dest: "/etc/nginx/sites-enabled/{{ app_name }}.conf"
+    validate: bash -c "nginx -t -c /dev/stdin <<< 'events { worker_connections 1; } http { include %s; }'"
+  register: nginx
+
+- name: nginx is restarted
+  service: name=nginx state=restarted
+  when: nginx.changed

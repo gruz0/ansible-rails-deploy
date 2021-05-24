@@ -1,0 +1,31 @@
+---
+
+- name: deploy
+  vars_prompt:
+    - name: hosts
+      prompt: 'Enter target hosts'
+      private: no
+      default: development
+  hosts: "{{ hosts }}"
+  remote_user: "{{ user }}"
+  become: yes
+
+  roles:
+    - role: nginx
+      tags: nginx
+
+    - role: deploy
+      vars:
+        use_ssl: true
+      app_name: sample_project
+      app_hostname: sample-project.dev
+      git_repo: https://github.com/my-company/sample-project
+      git_branch: master
+      database_name: "database01"
+      database_username: "username01"
+      database_password: "password01"
+      shared_dirs:
+        - tmp
+        - log
+      shared_files:
+        - .env

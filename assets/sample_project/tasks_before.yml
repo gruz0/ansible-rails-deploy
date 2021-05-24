@@ -1,0 +1,37 @@
+---
+
+- name: env file is installed
+  template:
+    src: "{{ app_assets }}/env.j2"
+    dest: "{{ app_shared_path }}/.env"
+  become_user: "{{ user }}"
+
+- name: bundle config (set deployment)
+  shell: "/usr/local/rvm/wrappers/default/bundle config set --local deployment true"
+  become_user: "{{ user }}"
+
+- name: bundle config (set without)
+  shell: "/usr/local/rvm/wrappers/default/bundle config set --local without 'development test'"
+  become_user: "{{ user }}"
+
+- name: bundle config (set path)
+  shell: "/usr/local/rvm/wrappers/default/bundle config set --local path {{ app_shared_path }}/bundle"
+  become_user: "{{ user }}"
+
+- name: bundle install
+  shell: "cd {{ app_release_path }} && /usr/local/rvm/wrappers/default/bundle install"
+  become_user: "{{ user }}"
+
+- name: precompile assets
+  shell: "cd {{ app_release_path }} && RAILS_ENV=production /usr/local/rvm/wrappers/default/bundle exec rake assets:precompile"
+  become_user: "{{ user }}"
+
+- name: create database backup directory
+  file:
+    path: "{{ app_path }}/backups"
+    state: directory
+  become_user: "{{ user }}"
+
+- name: create database backup
+  shell: "mysqldump --user='{{ database_username }}' --password='{{ database_password }}' '{{ database_name }}' > {{ app_path }}/backups/$(date +'%Y%m%d%H%M').sql"
+  become_user: "{{ user }}"

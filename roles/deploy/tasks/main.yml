@@ -1,0 +1,74 @@
+---
+
+- set_fact: datetime="{{ lookup('pipe', 'date +%Y%m%d%H%M%S') }}"
+  run_once: true
+
+- set_fact: force="{{ lookup('env', 'FORCE') }}"
+
+- set_fact: app_assets="{{ playbook_dir }}/assets/{{ app_name }}"
+- set_fact: app_path="/var/www/{{ app_name }}"
+- set_fact: app_current_path="{{ app_path }}/current"
+- set_fact: app_shared_path="{{ app_path }}/shared"
+- set_fact: app_release_path="{{ app_path }}/releases/{{ datetime }}"
+
+- name: app root is created
+  file: path="{{ app_path }}" state=directory owner="{{ user }}" group="{{ user }}"
+
+- stat: path="{{ app_current_path }}"
+  register: current_path_info
+
+- name: app is updated
+  git:
+    repo: "{{ git_repo }}"
+    dest: "{{ app_path }}/repo"
+    accept_hostkey: true
+  become_user: "{{ user }}"
+  register: pull
+
+- set_fact: updated="{{ current_path_info.stat.exists == false or pull.changed or (force is defined and force) }}"
+
+- name: make new release
+  include: release.yml
+  become_user: "{{ user }}"
+  when: updated
+
+- name: before update routine
+  include: "{{ item }}"
+  with_first_found:
+    - files:
+      - "{{ app_assets }}/tasks_before.yml"
+      skip: true
+  when: updated
+
+- name: fix dirs access
+  command: "find {{ app_release_path }} -type d -exec chmod 755 {} \\;"
+  when: updated
+  changed_when: false
+
+- name: fix files access
+  command: "find {{ app_release_path }} -type f -exec chmod 644 {} \\;"
+  when: updated
+  changed_when: false
+
+- name: set executable bit to project's /bin
+  command: "find {{ app_release_path }}/bin -type f -exec chmod 755 {} \\;"
+  when: updated
+  changed_when: false
+
+- name: update current
+  file: src={{ app_release_path }} path={{ app_path }}/current state=link mode=0755
+  when: updated
+  changed_when: false
+
+- name: after update routine
+  include: "{{ item }}"
+  with_first_found:
+    - files:
+      - "{{ app_assets }}/tasks_after.yml"
+      skip: true
+  when: updated
+
+- name: clean old releases
+  shell: "cd {{ app_path }}/releases && ls -1 | sort -r | tail -n +4 | xargs rm -rf"
+  when: updated
+  changed_when: false

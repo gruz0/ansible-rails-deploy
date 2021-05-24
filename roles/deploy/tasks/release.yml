@@ -1,0 +1,76 @@
+---
+
+- set_fact: shared_dirs=[]
+  when: shared_dirs is undefined
+
+- set_fact: shared_files=[]
+  when: shared_files is undefined
+
+- name: releases directory exists
+  file: path="{{ app_path }}/releases" state=directory
+
+- name: release is created
+  command: "rsync -r --exclude='.git' {{ app_path }}/repo/ {{ app_release_path }}"
+  changed_when: false
+
+- name: get branch head hash
+  shell: "cd {{ app_path }}/repo && git rev-parse --short HEAD"
+  register: git_head
+  changed_when: false
+
+- name: create revision file in the release path
+  copy: content="{{ git_head.stdout }}" dest="{{ app_release_path }}/REVISION"
+  changed_when: false
+
+# prepare shared path
+
+- name: shared directory exists
+  file: path="{{ app_shared_path }}" state=directory
+
+- name: shared dirs are exist
+  file: path="{{ app_shared_path }}/{{ item }}" state=directory recurse=yes
+  with_items: "{{ shared_dirs }}"
+
+- name: dirs of shared files are exist
+  file: path="{{ app_shared_path }}/{{ item | dirname }}" state=directory recurse=yes
+  with_items: "{{ shared_files }}"
+
+# prepare release path
+
+- name: shared dirs are exist
+  file: path="{{ app_release_path }}/{{ item }}" state=directory recurse=yes
+  with_items: "{{ shared_dirs }}"
+  changed_when: false
+
+- name: dirs of shared files are exist
+  file: path="{{ app_release_path }}/{{ item | dirname }}" state=directory recurse=yes
+  with_items: "{{ shared_files }}"
+  changed_when: false
+
+# create links to shared dirs and files
+
+- name: shared files are exist in release
+  copy:
+    content: ""
+    dest: "{{ app_release_path }}/{{ item }}"
+    force: no
+  with_items: "{{ shared_files }}"
+  changed_when: false
+
+- name: shared files moved to shared folder if they dont exist
+  command: "cp -n {{ app_release_path }}/{{ item }} {{ app_shared_path }}/{{ item }}"
+  with_items: "{{ shared_files }}"
+  changed_when: false
+
+- name: link paths are absent in release
+  file: path="{{ app_release_path }}/{{ item }}" state=absent
+  with_items: "{{ shared_dirs + shared_files }}"
+  changed_when: false
+
+- name: links from release to shared are exist
+  file:
+    src: "{{ app_shared_path }}/{{ item }}"
+    path: "{{ app_release_path }}/{{ item }}"
+    state: link
+  with_items: "{{ shared_dirs + shared_files }}"
+  changed_when: false
